@@ -1,0 +1,99 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiChat ECDH Test</title>
+</head>
+<body>
+
+<h2>MiChat ECDH Encryption Test</h2>
+<button onclick="testECDH()">Run ECDH Test</button>
+
+<pre id="output">Ready...</pre>
+
+<script src="assets/js/crypto.js"></script>
+
+<script>
+async function testECDH() {
+    const output = document.getElementById("output");
+
+    try {
+        output.textContent = "Generating device keys...";
+
+        // Simulate two independent devices.
+        const deviceA = await MiChatCrypto.generatePrekeyPair();
+        const deviceB = await MiChatCrypto.generatePrekeyPair();
+
+        const publicA = await MiChatCrypto.exportPublicKey(
+            deviceA.publicKey
+        );
+
+        const publicB = await MiChatCrypto.exportPublicKey(
+            deviceB.publicKey
+        );
+
+        const message = "Hello from MiChat Device A!";
+
+        // Device A encrypts using Device B's public key.
+        const encrypted = await MiChatCrypto.encryptMessage(
+            deviceA.privateKey,
+            publicB,
+            message
+        );
+
+        // Device B decrypts using Device A's public key.
+        const decrypted = await MiChatCrypto.decryptMessage(
+            deviceB.privateKey,
+            publicA,
+            encrypted
+        );
+
+        if (decrypted !== message) {
+            throw new Error("Decrypted message does not match");
+        }
+
+        // Tamper with ciphertext and confirm authentication fails.
+        const tampered = {
+            ...encrypted,
+            ciphertext:
+                (encrypted.ciphertext[0] === "0" ? "1" : "0") +
+                encrypted.ciphertext.slice(1)
+        };
+
+        let tamperingRejected = false;
+
+        try {
+            await MiChatCrypto.decryptMessage(
+                deviceB.privateKey,
+                publicA,
+                tampered
+            );
+        } catch {
+            tamperingRejected = true;
+        }
+
+        if (!tamperingRejected) {
+            throw new Error("Tampered ciphertext was accepted");
+        }
+
+        output.textContent = JSON.stringify({
+            device_a_key_generated: true,
+            device_b_key_generated: true,
+            encryption: true,
+            decryption: true,
+            original_message: message,
+            decrypted_message: decrypted,
+            ciphertext_tampering_rejected: tamperingRejected,
+            status: "ECDH ENCRYPTION TEST PASSED"
+        }, null, 2);
+
+    } catch (error) {
+        output.textContent = error.stack || error.message;
+    }
+}
+</script>
+
+</body>
+</html>

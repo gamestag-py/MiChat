@@ -1,0 +1,187 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiChat Handshake Context Test</title>
+</head>
+<body>
+
+<h2>MiChat Handshake Context Test</h2>
+<button onclick="runTest()">Run Test</button>
+<pre id="output">Ready...</pre>
+
+<script src="assets/js/crypto.js"></script>
+
+<script>
+async function runTest() {
+    const output = document.getElementById("output");
+
+    try {
+        // Simulated conversation and device identifiers.
+        const conversationId = "conversation-test-001";
+        const senderDeviceId = "device-A-001";
+        const recipientDeviceId = "device-B-001";
+
+        const signedPrekeyId = 1001;
+        const oneTimePrekeyId = 2001;
+
+        // Recipient B generates its keys.
+        const identity = await MiChatCrypto.generateIdentityKeyPair();
+        const signedPrekey = await MiChatCrypto.generatePrekeyPair();
+        const oneTimePrekey = await MiChatCrypto.generatePrekeyPair();
+
+        const identityPublic = await MiChatCrypto.exportPublicKey(
+            identity.publicKey
+        );
+
+        const signedPublic = await MiChatCrypto.exportPublicKey(
+            signedPrekey.publicKey
+        );
+
+        const oneTimePublic = await MiChatCrypto.exportPublicKey(
+            oneTimePrekey.publicKey
+        );
+
+        const signature = await MiChatCrypto.signPrekey(
+            identity.privateKey,
+            signedPrekey.publicKey
+        );
+
+        const signatureValid =
+            await MiChatCrypto.verifyPrekeySignature(
+                identityPublic,
+                signedPublic,
+                signature
+            );
+
+        if (!signatureValid) {
+            throw new Error("Signed prekey verification failed");
+        }
+
+        // Build identical context on both devices.
+        const handshakeData = {
+            conversationId,
+            senderDeviceId,
+            recipientDeviceId,
+            signedPrekeyId,
+            oneTimePrekeyId
+        };
+
+        const context = MiChatCrypto.buildHandshakeContext(
+            handshakeData
+        );
+
+        const salt = MiChatCrypto.toHex(
+            crypto.getRandomValues(new Uint8Array(32))
+        );
+
+        // Sender A generates an ephemeral key.
+        const ephemeral = await MiChatCrypto.generatePrekeyPair();
+
+        const ephemeralPublic = await MiChatCrypto.exportPublicKey(
+            ephemeral.publicKey
+        );
+
+        // Sender derives the session key.
+        const senderKey = await MiChatCrypto.createSessionKey(
+            ephemeral.privateKey,
+            signedPublic,
+            oneTimePublic,
+            salt,
+            context
+        );
+
+        // Recipient independently derives the same key.
+        const recipientKey = await MiChatCrypto.acceptSessionKey(
+            signedPrekey.privateKey,
+            oneTimePrekey.privateKey,
+            ephemeralPublic,
+            salt,
+            context
+        );
+
+        const message = "MiChat context-bound message";
+
+        const encrypted = await MiChatCrypto.encryptWithSessionKey(
+            senderKey,
+            message,
+            context
+        );
+
+        const decrypted = await MiChatCrypto.decryptWithSessionKey(
+            recipientKey,
+            encrypted,
+            context
+        );
+
+        if (decrypted !== message) {
+            throw new Error("Message decryption failed");
+        }
+
+        // Attempt decryption with a different conversation context.
+        const wrongConversationContext =
+            MiChatCrypto.buildHandshakeContext({
+                ...handshakeData,
+                conversationId: "different-conversation"
+            });
+
+        let conversationMismatchRejected = false;
+
+        try {
+            await MiChatCrypto.decryptWithSessionKey(
+                recipientKey,
+                encrypted,
+                wrongConversationContext
+            );
+        } catch {
+            conversationMismatchRejected = true;
+        }
+
+        // Attempt decryption with a different sender device context.
+        const wrongDeviceContext =
+            MiChatCrypto.buildHandshakeContext({
+                ...handshakeData,
+                senderDeviceId: "device-OTHER"
+            });
+
+        let deviceMismatchRejected = false;
+
+        try {
+            await MiChatCrypto.decryptWithSessionKey(
+                recipientKey,
+                encrypted,
+                wrongDeviceContext
+            );
+        } catch {
+            deviceMismatchRejected = true;
+        }
+
+        if (
+            !conversationMismatchRejected ||
+            !deviceMismatchRejected
+        ) {
+            throw new Error("Context binding test failed");
+        }
+
+        output.textContent = JSON.stringify({
+            signature_verification: signatureValid,
+            sender_key_derived: true,
+            recipient_key_derived: true,
+            message_decryption: true,
+            conversation_mismatch_rejected:
+                conversationMismatchRejected,
+            device_mismatch_rejected:
+                deviceMismatchRejected,
+            status: "HANDSHAKE CONTEXT TEST PASSED"
+        }, null, 2);
+
+    } catch (error) {
+        output.textContent = error.stack || error.message;
+    }
+}
+</script>
+
+</body>
+</html>

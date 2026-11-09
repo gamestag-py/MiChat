@@ -1,0 +1,124 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiChat Handshake Test</title>
+</head>
+<body>
+
+<h2>MiChat Initial Key Exchange Test</h2>
+<button onclick="runTest()">Run Handshake Test</button>
+<pre id="output">Ready...</pre>
+
+<script src="assets/js/crypto.js"></script>
+
+<script>
+async function runTest() {
+    const output = document.getElementById("output");
+
+    try {
+        // Simulate recipient device B.
+        const recipientIdentity =
+            await MiChatCrypto.generateIdentityKeyPair();
+
+        const recipientSignedPrekey =
+            await MiChatCrypto.generatePrekeyPair();
+
+        const recipientOneTimePrekey =
+            await MiChatCrypto.generatePrekeyPair();
+
+        const identityPublic = await MiChatCrypto.exportPublicKey(
+            recipientIdentity.publicKey
+        );
+
+        const signedPrekeyPublic = await MiChatCrypto.exportPublicKey(
+            recipientSignedPrekey.publicKey
+        );
+
+        const oneTimePrekeyPublic = await MiChatCrypto.exportPublicKey(
+            recipientOneTimePrekey.publicKey
+        );
+
+        const signature = await MiChatCrypto.signPrekey(
+            recipientIdentity.privateKey,
+            recipientSignedPrekey.publicKey
+        );
+
+        // Simulate sender device A verifying B's signed prekey.
+        const signatureValid =
+            await MiChatCrypto.verifyPrekeySignature(
+                identityPublic,
+                signedPrekeyPublic,
+                signature
+            );
+
+        if (!signatureValid) {
+            throw new Error("Recipient signed prekey verification failed");
+        }
+
+        // A generates a temporary ECDH key pair.
+        const ephemeral = await MiChatCrypto.generatePrekeyPair();
+
+        const ephemeralPublic = await MiChatCrypto.exportPublicKey(
+            ephemeral.publicKey
+        );
+
+        const salt = MiChatCrypto.toHex(
+            crypto.getRandomValues(new Uint8Array(32))
+        );
+
+        // A derives the session key.
+        const senderSessionKey = await MiChatCrypto.createSessionKey(
+            ephemeral.privateKey,
+            signedPrekeyPublic,
+            oneTimePrekeyPublic,
+            salt
+        );
+
+        // B independently derives the same session key.
+        const recipientSessionKey = await MiChatCrypto.acceptSessionKey(
+            recipientSignedPrekey.privateKey,
+            recipientOneTimePrekey.privateKey,
+            ephemeralPublic,
+            salt
+        );
+
+        // A encrypts; B decrypts.
+        const message = "MiChat secure handshake successful!";
+
+        const encrypted = await MiChatCrypto.encryptWithSessionKey(
+            senderSessionKey,
+            message
+        );
+
+        const decrypted = await MiChatCrypto.decryptWithSessionKey(
+            recipientSessionKey,
+            encrypted
+        );
+
+        if (decrypted !== message) {
+            throw new Error("Handshake message mismatch");
+        }
+
+        output.textContent = JSON.stringify({
+            recipient_signature_valid: signatureValid,
+            ephemeral_key_generated: true,
+            sender_session_key_derived: true,
+            recipient_session_key_derived: true,
+            message_encrypted: true,
+            message_decrypted: true,
+            original_message: message,
+            decrypted_message: decrypted,
+            status: "HANDSHAKE TEST PASSED"
+        }, null, 2);
+
+    } catch (error) {
+        output.textContent = error.stack || error.message;
+    }
+}
+</script>
+
+</body>
+</html>

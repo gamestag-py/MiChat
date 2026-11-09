@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiChat Secure Key Storage Test</title>
+</head>
+<body>
+
+<h2>MiChat Secure Key Storage Test</h2>
+
+<button onclick="generateAndStore()">Generate & Store Keys</button>
+<button onclick="loadAndVerify()">Load & Verify Keys</button>
+
+<pre id="output">Ready...</pre>
+
+<script src="assets/js/crypto.js"></script>
+
+<script>
+const output = document.getElementById("output");
+
+async function generateAndStore() {
+    try {
+        output.textContent = "Generating keys...";
+
+        const identity = await MiChatCrypto.generateIdentityKeyPair();
+        const signedPrekey = await MiChatCrypto.generatePrekeyPair();
+        const oneTimePrekey = await MiChatCrypto.generatePrekeyPair();
+
+        await MiChatCrypto.saveKeyPair("identity", identity);
+        await MiChatCrypto.saveKeyPair("signed_prekey", signedPrekey);
+        await MiChatCrypto.saveKeyPair("one_time_prekey", oneTimePrekey);
+
+        output.textContent = JSON.stringify({
+            identity_private_extractable: identity.privateKey.extractable,
+            signed_prekey_private_extractable: signedPrekey.privateKey.extractable,
+            one_time_prekey_private_extractable: oneTimePrekey.privateKey.extractable,
+            identity_public_key: await MiChatCrypto.exportPublicKey(identity.publicKey),
+            signed_prekey_public_key: await MiChatCrypto.exportPublicKey(signedPrekey.publicKey),
+            one_time_prekey_public_key: await MiChatCrypto.exportPublicKey(oneTimePrekey.publicKey),
+            status: "KEYS GENERATED AND STORED"
+        }, null, 2);
+
+    } catch (error) {
+        output.textContent = error.stack || error.message;
+    }
+}
+
+async function loadAndVerify() {
+    try {
+        output.textContent = "Loading stored keys...";
+
+        const identity = await MiChatCrypto.loadKeyPair("identity");
+        const signedPrekey = await MiChatCrypto.loadKeyPair("signed_prekey");
+        const oneTimePrekey = await MiChatCrypto.loadKeyPair("one_time_prekey");
+
+        if (!identity || !signedPrekey || !oneTimePrekey) {
+            throw new Error("Stored keys not found. Generate keys first.");
+        }
+
+        const identityPublic = identity.publicKeyHex;
+        const signedPublic = signedPrekey.publicKeyHex;
+
+        const signature = await MiChatCrypto.signPrekey(
+            identity.privateKey,
+            signedPrekey.publicKey
+        );
+
+        const valid = await MiChatCrypto.verifyPrekeySignature(
+            identityPublic,
+            signedPublic,
+            signature
+        );
+
+        let privateExportBlocked = false;
+
+        try {
+            await crypto.subtle.exportKey("jwk", identity.privateKey);
+        } catch {
+            privateExportBlocked = true;
+        }
+
+        if (!valid || !privateExportBlocked) {
+            throw new Error("Key security verification failed.");
+        }
+
+        output.textContent = JSON.stringify({
+            identity_key_loaded: true,
+            signed_prekey_loaded: true,
+            one_time_prekey_loaded: true,
+            private_key_extractable: identity.privateKey.extractable,
+            signature_verification: valid,
+            private_key_export_blocked: privateExportBlocked,
+            status: "SECURE STORAGE TEST PASSED"
+        }, null, 2);
+
+    } catch (error) {
+        output.textContent = error.stack || error.message;
+    }
+}
+</script>
+
+</body>
+</html>
