@@ -33,7 +33,7 @@ async def create_verification(
     if not settings.OTP_HMAC_SECRET:
         raise RuntimeError("OTP_HMAC_SECRET is not configured")
 
-    if verification_type not in ("email", "phone"):
+    if verification_type not in ("email", "phone", "password_reset"):
         raise ValueError("Invalid verification type")
 
     otp = f"{secrets.randbelow(1_000_000):06d}"
@@ -85,15 +85,15 @@ async def create_verification(
                 ),
             )
 
-    # Temporary return for internal testing.
-    # Never return this OTP from a public API.
+    # Temporary return for internal testing only.
+    # Never return OTPs through public API responses.
     return otp
-
 
 
 import hmac
 from datetime import datetime, timezone
-
+import logging
+logger = logging.getLogger("michat.password_reset")
 
 async def verify_otp(
     user_id: int,
@@ -101,8 +101,8 @@ async def verify_otp(
     destination: str,
     otp: str,
 ) -> bool:
-
-    if verification_type not in ("email", "phone"):
+    logger.info("OTP verification started: user_id=%s type=%s", user_id, verification_type)
+    if verification_type not in ("email", "phone", "password_reset"):
         return False
 
     if not otp.isdigit() or len(otp) != 6:
@@ -134,7 +134,7 @@ async def verify_otp(
             )
 
             record = await cursor.fetchone()
-
+            logger.info("OTP record found: %s", bool(record))
             if not record:
                 return False
 
@@ -147,11 +147,13 @@ async def verify_otp(
                 consumed_at,
             ) = record
 
+            # Reject already consumed OTPs.
             if consumed_at is not None:
                 return False
 
             now = datetime.now(timezone.utc).replace(tzinfo=None)
 
+            # Reject expired OTPs and consume them.
             if expires_at <= now:
                 await cursor.execute(
                     """
@@ -163,15 +165,18 @@ async def verify_otp(
                 )
                 return False
 
+            # Reject OTPs that exceeded the attempt limit.
             if attempts >= settings.OTP_MAX_ATTEMPTS:
                 return False
 
+            # Validate destination.
             if not hmac.compare_digest(
                 stored_destination_hash,
                 destination_hash,
             ):
                 return False
 
+            # Validate OTP hash.
             if not hmac.compare_digest(
                 stored_code_hash,
                 submitted_hash,
@@ -199,6 +204,7 @@ async def verify_otp(
 
                 return False
 
+            # Consume successfully verified OTP.
             await cursor.execute(
                 """
                 UPDATE account_verifications
@@ -208,6 +214,8 @@ async def verify_otp(
                 (verification_id,),
             )
 
+            # Update account verification status only for
+            # email or phone verification.
             if verification_type == "email":
                 await cursor.execute(
                     """
@@ -217,7 +225,8 @@ async def verify_otp(
                     """,
                     (user_id,),
                 )
-            else:
+
+            elif verification_type == "phone":
                 await cursor.execute(
                     """
                     UPDATE users
@@ -227,4 +236,5 @@ async def verify_otp(
                     (user_id,),
                 )
 
-            return cursor.rowcount >= 0
+            # password_reset only consumes the OTP.
+            return True

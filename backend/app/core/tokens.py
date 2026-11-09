@@ -7,11 +7,14 @@ import jwt
 from app.core.config import settings
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, session_id: str) -> str:
+    import uuid
+
     now = datetime.now(timezone.utc)
 
     payload = {
         "sub": str(user_id),
+        "sid": str(uuid.UUID(session_id)),
         "iat": now,
         "exp": now + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES

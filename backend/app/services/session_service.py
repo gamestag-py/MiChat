@@ -61,7 +61,10 @@ async def create_session(
                 ),
             )
 
-    access_token = create_access_token(user_id)
+    access_token = create_access_token(
+        user_id,
+        session_id=str(session_id)
+    )
 
     return {
         "session_id": str(session_id),

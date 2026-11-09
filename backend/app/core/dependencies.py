@@ -1,4 +1,5 @@
 
+import uuid
 import jwt
 
 from fastapi import Depends, HTTPException
@@ -35,8 +36,26 @@ async def get_current_user(
             raise unauthorized
 
         user_id = int(payload["sub"])
+        session_id = str(uuid.UUID(payload["sid"]))
 
-    except (InvalidTokenError, ValueError, KeyError, TypeError):
+    except (InvalidTokenError, ValueError, KeyError, TypeError, AttributeError):
+        raise unauthorized
+
+    # Check whether this specific session is still active.
+    session = await db.fetch_one(
+        """
+        SELECT id
+        FROM user_sessions
+        WHERE id = UNHEX(REPLACE(%s, '-', ''))
+          AND user_id = %s
+          AND revoked_at IS NULL
+          AND expires_at > UTC_TIMESTAMP(3)
+        LIMIT 1
+        """,
+        (session_id, user_id),
+    )
+
+    if not session:
         raise unauthorized
 
     user = await db.fetch_one(

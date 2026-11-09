@@ -50,6 +50,14 @@ from app.services.auth_service import (
 )
 
 
+from app.schemas.auth import ForgotPasswordRequest
+
+from app.services.password_reset_service import request_password_reset
+from app.schemas.auth import ResetPasswordRequest
+from app.services.password_reset_service import reset_password
+
+from app.core.rate_limit import limiter
+
 
 router = APIRouter(
     prefix="/auth",
@@ -57,7 +65,7 @@ router = APIRouter(
 )
 
 
-
+from fastapi import Response
 
 from fastapi import status
 
@@ -73,7 +81,7 @@ from app.services.auth_service import (
     AccountAlreadyExistsError
 )
 
-
+from fastapi import Request
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -103,7 +111,8 @@ logger = logging.getLogger("michat.auth")
     response_model=RegisterResponse,
     status_code=201,
 )
-async def register(payload: RegisterRequest):
+@limiter.limit("5/minute")
+async def register(request: Request, payload: RegisterRequest):
     try:
         user_id = await register_user(
             email=payload.email,
@@ -131,7 +140,8 @@ async def register(payload: RegisterRequest):
     response_model=VerifyOTPResponse,
     status_code=status.HTTP_200_OK,
 )
-async def verify_account_otp(payload: VerifyOTPRequest):
+@limiter.limit("5/minute")
+async def verify_account_otp(request: Request, payload: VerifyOTPRequest):
 
     verified = await verify_otp(
         user_id=payload.user_id,
@@ -158,7 +168,8 @@ async def verify_account_otp(payload: VerifyOTPRequest):
 
 
 @router.post("/resend-otp")
-async def resend_otp(payload: ResendOTPRequest):
+@limiter.limit("5/minute")
+async def resend_otp(request: Request, payload: ResendOTPRequest):
 
     # Check account and verification status
     if payload.verification_type == "email":
@@ -218,13 +229,13 @@ async def resend_otp(payload: ResendOTPRequest):
         (payload.user_id, payload.verification_type)
     )
 
-    # if latest and latest["seconds_ago"] < 60:
-    #     remaining = 60 - latest["seconds_ago"]
+    if latest and latest["seconds_ago"] < 60:
+        remaining = 60 - latest["seconds_ago"]
 
-    #     raise HTTPException(
-    #         status_code=429,
-    #         detail=f"Please wait {remaining} seconds before requesting another OTP."
-    #     )
+        raise HTTPException(
+            status_code=429,
+            detail=f"Please wait {remaining} seconds before requesting another OTP."
+        )
 
     # Generate a new OTP
     otp = await create_verification(
@@ -250,7 +261,9 @@ async def resend_otp(payload: ResendOTPRequest):
     "/login",
     response_model=LoginResponse,
 )
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     payload: LoginRequest,
     response: Response,
 ):
@@ -310,7 +323,8 @@ async def login(
     "/refresh",
     response_model=LoginResponse,
 )
-async def refresh_access_token(
+@limiter.limit("10/minute")
+async def refresh_access_token(request: Request, 
     response: Response,
     michat_refresh: str | None = Cookie(default=None),
 ):
@@ -416,4 +430,45 @@ async def logout_all(
         "success": True,
         "message": "Logged out from all devices successfully",
         "revoked_sessions": revoked_count,
+    }
+
+
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, payload: ForgotPasswordRequest):
+
+    await request_password_reset(
+        email=payload.email,
+        phone_number=payload.phone_number,
+    )
+
+    return {
+        "success": True,
+        "message": "If the account exists, password reset instructions have been sent."
+    }
+
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+async def reset_password_endpoint(request: Request, payload: ResetPasswordRequest):
+
+    success = await reset_password(
+        email=payload.email,
+        phone_number=payload.phone_number,
+        otp=payload.otp,
+        new_password=payload.new_password,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired password reset request."
+        )
+
+    return {
+        "success": True,
+        "message": "Password reset successfully. Please log in again."
     }

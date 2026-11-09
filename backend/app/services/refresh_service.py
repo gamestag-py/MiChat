@@ -8,7 +8,7 @@ from app.core.tokens import (
     create_refresh_token,
     hash_refresh_token,
 )
-
+import uuid
 
 class InvalidRefreshTokenError(Exception):
     pass
@@ -79,7 +79,12 @@ async def rotate_refresh_token(refresh_token: str) -> dict:
                 )
 
     # Generate the access token only after the rotation commits.
-    access_token = create_access_token(user_id)
+    if isinstance(session_id, (bytes, bytearray)):
+        session_id = uuid.UUID(bytes=bytes(session_id))
+    else:
+        session_id = uuid.UUID(str(session_id))
+
+    access_token = create_access_token(user_id, str(session_id))
 
     return {
         "access_token": access_token,
