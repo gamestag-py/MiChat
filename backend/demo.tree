@@ -1,0 +1,78 @@
+backend\
+|-- app\
+|   |-- api\
+|   |   |-- routes\
+|   |   |   |-- __init__.py
+|   |   |   `-- auth.py
+|   |   |-- __init__.py
+|   |   |-- devices.py
+|   |   |-- privacy.py
+|   |   |-- profile.py
+|   |   `-- router.py
+|   |-- core\
+|   |   |-- __init__.py
+|   |   |-- config.py
+|   |   |-- dependencies.py
+|   |   |-- exceptions.py
+|   |   |-- middleware.py
+|   |   |-- rate_limit.py
+|   |   |-- responses.py
+|   |   |-- security.py
+|   |   `-- tokens.py
+|   |-- models\
+|   |   `-- __init__.py
+|   |-- schemas\
+|   |   |-- __init__.py
+|   |   |-- auth.py
+|   |   |-- device.py
+|   |   |-- one_time_prekey.py
+|   |   |-- privacy.py
+|   |   |-- profile.py
+|   |   `-- signed_prekey.py
+|   |-- services\
+|   |   |-- __init__.py
+|   |   |-- auth_service.py
+|   |   |-- device_service.py
+|   |   |-- key_bundle_service.py
+|   |   |-- logout_service.py
+|   |   |-- one_time_prekey_service.py
+|   |   |-- password_reset_service.py
+|   |   |-- privacy_service.py
+|   |   |-- profile_service.py
+|   |   |-- refresh_service.py
+|   |   |-- session_service.py
+|   |   |-- signed_prekey_service.py
+|   |   `-- verification_service.py
+|   |-- websocket\
+|   |   `-- __init__.py
+|   |-- __init__.py
+|   |-- db.py
+|   `-- main.py
+|-- databases\
+|   |-- migrations\
+|   |-- db.py
+|   `-- michat.sql
+|-- docs\
+|-- storage\
+|-- tests\
+|-- demo.tree
+|-- requirements.txt
+|-- test.py
+|-- test_auth_service.py
+|-- test_claim_one_time_prekey.py
+|-- test_db.py
+|-- test_device_service.py
+|-- test_login_schema.py
+|-- test_login_service.py
+|-- test_one_time_prekey_service.py
+|-- test_pass_schema.py
+|-- test_privacy.py
+|-- test_profile.py
+|-- test_refresh.py
+|-- test_schema.py
+|-- test_security.py
+|-- test_session.py
+|-- test_signed_prekey_service.py
+|-- test_tokens.py
+|-- test_verification.py
+`-- test_verify_otp.py
