@@ -1,1 +1,7 @@
-websocket/node_modules
+websocket/node_modules.env
+**/.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
